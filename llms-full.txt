@@ -1488,6 +1488,8 @@ DashScopeChatModel model = DashScopeChatModel.builder()
 | `endpointType` | API endpoint type (default `AUTO` auto-detect), options: `TEXT` (force text API) or `MULTIMODAL` (force multimodal API) |
 | `defaultOptions` | Default generation options (temperature, maxTokens, etc.) |
 | `formatter` | Message formatter (default `DashScopeChatFormatter`) |
+| `nativeStructuredOutput` | Enable native `response_format` structured output, default `false` |
+| `nativeStructuredOutputWithTools` | Enable native structured output when tools are present, defaults to `nativeStructuredOutput` |
 
 ### Endpoint Type (endpointType)
 
@@ -1548,13 +1550,16 @@ OpenAIChatModel model = OpenAIChatModel.builder()
 
 ### Compatible APIs
 
-For DeepSeek, vLLM, and other compatible providers:
+For DeepSeek, vLLM, and other compatible providers. Note that you need to configure the appropriate Formatter and structured output capabilities:
 
 ```java
 OpenAIChatModel model = OpenAIChatModel.builder()
         .apiKey("your-api-key")
         .modelName("deepseek-chat")
         .baseUrl("https://api.deepseek.com")
+        .formatter(new DeepSeekFormatter())
+        .nativeStructuredOutput(false)
+        .nativeStructuredOutputWithTools(false)
         .build();
 ```
 
@@ -1565,8 +1570,14 @@ OpenAIChatModel model = OpenAIChatModel.builder()
 | `apiKey` | API key |
 | `modelName` | Model name, e.g., `gpt-4o`, `gpt-4o-mini` |
 | `baseUrl` | Custom API endpoint (optional) |
+| `endpointPath` | Custom request path (optional), e.g., `/v4/chat/completions` |
 | `stream` | Enable streaming, default `true` |
 | `generateOptions` | Default generation options (note: OpenAI uses `.generateOptions()` instead of `.defaultOptions()`) |
+| `formatter` | Message formatter (default `OpenAIChatFormatter`). Compatible providers need their own Formatter (e.g., `DeepSeekFormatter`, `GLMFormatter`) |
+| `nativeStructuredOutput` | Enable native `response_format` structured output, default `true`. Unsupported providers (DeepSeek, vLLM, etc.) should set to `false` |
+| `nativeStructuredOutputWithTools` | Enable native structured output when tools are present, default `true`. Some providers prioritize `response_format` over tool calls, should set to `false` |
+| `contextWindowSize` | Override context window size (optional, auto-inferred from model name by default) |
+| `proxy` | Proxy configuration (optional), e.g., `ProxyConfig.http("localhost", 8080)` |
 
 ## Anthropic
 
@@ -12947,6 +12958,42 @@ A **Credential** carries a provider's API auth fields (`apiKey`, `baseUrl`, …)
 
 This layering matches the natural UX in a frontend — register the credential first, then pick a model under it — so the UI authenticates once and shows everything that provider supports.
 
+## Model extension modules
+
+Provider-specific model implementations have been moved out of `agentscope-core` into independent extension modules. Each provider module owns its chat model, credential, formatter, DTO, exception, and SDK/API client, etc.
+
+| Provider | Maven artifact | Main package |
+|----------|----------------|--------------|
+| OpenAI | `agentscope-extensions-model-openai` | `io.agentscope.extensions.model.openai` |
+| DashScope | `agentscope-extensions-model-dashscope` | `io.agentscope.extensions.model.dashscope` |
+| Gemini | `agentscope-extensions-model-gemini` | `io.agentscope.extensions.model.gemini` |
+| Anthropic | `agentscope-extensions-model-anthropic` | `io.agentscope.extensions.model.anthropic` |
+| Ollama | `agentscope-extensions-model-ollama` | `io.agentscope.extensions.model.ollama` |
+
+### Migration checklist
+
+1. Add the provider extension module dependency. For example, DashScope:
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-dashscope</artifactId>
+</dependency>
+```
+
+Other provider artifacts follow the same pattern: `agentscope-extensions-model-openai`, `agentscope-extensions-model-gemini`, `agentscope-extensions-model-anthropic`, and `agentscope-extensions-model-ollama`.
+
+2. Replace provider imports from `io.agentscope.core.model.*` with `io.agentscope.extensions.model.<provider>.*`.
+3. Replace provider formatter imports from `io.agentscope.core.formatter.<provider>.*` with `io.agentscope.extensions.model.<provider>.formatter.*`.
+4. For Spring Boot applications, replace the generic model creation path with the matching provider-specific starter and its `agentscope.<provider>.*` properties.
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-dashscope-spring-boot-starter</artifactId>
+</dependency>
+```
+
 ## Choose a creation path
 
 ### String model id
@@ -13000,42 +13047,6 @@ agentscope:
     api-key: ${OPENAI_API_KEY}
     model-name: gpt-4.1-mini
     stream: true
-```
-
-## Model extension modules
-
-Provider-specific model implementations have been moved out of `agentscope-core` into independent extension modules. Each provider module owns its chat model, credential, formatter, DTO, exception, and SDK/API client, etc.
-
-| Provider | Maven artifact | Main package |
-|----------|----------------|--------------|
-| OpenAI | `agentscope-extensions-model-openai` | `io.agentscope.extensions.model.openai` |
-| DashScope | `agentscope-extensions-model-dashscope` | `io.agentscope.extensions.model.dashscope` |
-| Gemini | `agentscope-extensions-model-gemini` | `io.agentscope.extensions.model.gemini` |
-| Anthropic | `agentscope-extensions-model-anthropic` | `io.agentscope.extensions.model.anthropic` |
-| Ollama | `agentscope-extensions-model-ollama` | `io.agentscope.extensions.model.ollama` |
-
-### Migration checklist
-
-1. Add the provider extension module dependency. For example, DashScope:
-
-```xml
-<dependency>
-    <groupId>io.agentscope</groupId>
-    <artifactId>agentscope-extensions-model-dashscope</artifactId>
-</dependency>
-```
-
-Other provider artifacts follow the same pattern: `agentscope-extensions-model-openai`, `agentscope-extensions-model-gemini`, `agentscope-extensions-model-anthropic`, and `agentscope-extensions-model-ollama`.
-
-2. Replace provider imports from `io.agentscope.core.model.*` with `io.agentscope.extensions.model.<provider>.*`.
-3. Replace provider formatter imports from `io.agentscope.core.formatter.<provider>.*` with `io.agentscope.extensions.model.<provider>.formatter.*`.
-4. For Spring Boot applications, replace the generic model creation path with the matching provider-specific starter and its `agentscope.<provider>.*` properties.
-
-```xml
-<dependency>
-    <groupId>io.agentscope</groupId>
-    <artifactId>agentscope-dashscope-spring-boot-starter</artifactId>
-</dependency>
 ```
 
 ## ModelRegistry and ModelCreationContext
@@ -18767,6 +18778,22 @@ This section collects the AgentScope Java extensions that connect to third-party
 
 The extensions are grouped by topic:
 
+## Model Providers
+
+All model providers have moved to independent model extension modules, while `agentscope-core` keeps only the shared model contracts. See [Model](../docs/building-blocks/model.md) for the full creation paths, Spring Boot setup, formatters, credentials, and advanced registry behavior.
+
+| Provider | Maven artifact | `ModelRegistry` id | Standard environment variable | Docs |
+|----------|----------------|--------------------|-------------------------------|------|
+| OpenAI | `agentscope-extensions-model-openai` | `openai:<model>` | `OPENAI_API_KEY` | [OpenAI](model/openai.md) |
+| DashScope | `agentscope-extensions-model-dashscope` | `dashscope:<model>` / `qwen*` | `DASHSCOPE_API_KEY` | [DashScope](model/dashscope.md) |
+| Gemini | `agentscope-extensions-model-gemini` | `gemini:<model>` | `GEMINI_API_KEY` | [Gemini](model/gemini.md) |
+| Anthropic | `agentscope-extensions-model-anthropic` | `anthropic:<model>` | `ANTHROPIC_API_KEY` | [Anthropic](model/anthropic.md) |
+| Ollama | `agentscope-extensions-model-ollama` | `ollama:<model>` | `OLLAMA_BASE_URL` optional | [Ollama](model/ollama.md) |
+
+```{note}
+`agentscope-extensions-model-e2e-tests` is a repository test module, not a user-facing model integration dependency.
+```
+
 ## Distributed Storage (Distributed Store)
 
 Full-stack distributed storage components for multi-replica production deployments. Configure agent state, workspace filesystem, sandbox snapshots, and concurrency locks with a single `DistributedStore`.
@@ -23418,6 +23445,42 @@ CredentialBase/
 
 这种分层与前端的自然交互流程一致 —— 先注册凭证，再从凭证下挑选模型 —— 让界面只需鉴权一次，就能展示该提供商支持的所有模型。
 
+## 模型扩展模块
+
+特定模型提供商的实现已经从 `agentscope-core` 迁移到独立扩展模块中。每个模型适配模块自己维护 chat model、credential、formatter、DTO、异常、SDK/API client 等。
+
+| 提供商 | Maven artifact | 主要包名 |
+|--------|----------------|----------|
+| OpenAI | `agentscope-extensions-model-openai` | `io.agentscope.extensions.model.openai` |
+| DashScope | `agentscope-extensions-model-dashscope` | `io.agentscope.extensions.model.dashscope` |
+| Gemini | `agentscope-extensions-model-gemini` | `io.agentscope.extensions.model.gemini` |
+| Anthropic | `agentscope-extensions-model-anthropic` | `io.agentscope.extensions.model.anthropic` |
+| Ollama | `agentscope-extensions-model-ollama` | `io.agentscope.extensions.model.ollama` |
+
+### 迁移步骤
+
+1. 增加对应模型提供商扩展模块依赖。以 DashScope 为例：
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-extensions-model-dashscope</artifactId>
+</dependency>
+```
+
+其他模型扩展 artifact 遵循同样模式：`agentscope-extensions-model-openai`、`agentscope-extensions-model-gemini`、`agentscope-extensions-model-anthropic`、`agentscope-extensions-model-ollama`。
+
+2. 将模型提供商实现的 import 从 `io.agentscope.core.model.*` 改为 `io.agentscope.extensions.model.<provider>.*`。
+3. 将模型提供商 formatter import 从 `io.agentscope.core.formatter.<provider>.*` 改为 `io.agentscope.extensions.model.<provider>.formatter.*`。
+4. Spring Boot 应用中，改用对应提供商 starter 和 `agentscope.<provider>.*` 配置：
+
+```xml
+<dependency>
+    <groupId>io.agentscope</groupId>
+    <artifactId>agentscope-dashscope-spring-boot-starter</artifactId>
+</dependency>
+```
+
 ## 选择模型创建方式
 
 ### 字符串 model id
@@ -23471,42 +23534,6 @@ agentscope:
     api-key: ${OPENAI_API_KEY}
     model-name: gpt-4.1-mini
     stream: true
-```
-
-## 模型扩展模块
-
-特定模型提供商的实现已经从 `agentscope-core` 迁移到独立扩展模块中。每个模型适配模块自己维护 chat model、credential、formatter、DTO、异常、SDK/API client 等。
-
-| 提供商 | Maven artifact | 主要包名 |
-|--------|----------------|----------|
-| OpenAI | `agentscope-extensions-model-openai` | `io.agentscope.extensions.model.openai` |
-| DashScope | `agentscope-extensions-model-dashscope` | `io.agentscope.extensions.model.dashscope` |
-| Gemini | `agentscope-extensions-model-gemini` | `io.agentscope.extensions.model.gemini` |
-| Anthropic | `agentscope-extensions-model-anthropic` | `io.agentscope.extensions.model.anthropic` |
-| Ollama | `agentscope-extensions-model-ollama` | `io.agentscope.extensions.model.ollama` |
-
-### 迁移步骤
-
-1. 增加对应模型提供商扩展模块依赖。以 DashScope 为例：
-
-```xml
-<dependency>
-    <groupId>io.agentscope</groupId>
-    <artifactId>agentscope-extensions-model-dashscope</artifactId>
-</dependency>
-```
-
-其他模型扩展 artifact 遵循同样模式：`agentscope-extensions-model-openai`、`agentscope-extensions-model-gemini`、`agentscope-extensions-model-anthropic`、`agentscope-extensions-model-ollama`。
-
-2. 将模型提供商实现的 import 从 `io.agentscope.core.model.*` 改为 `io.agentscope.extensions.model.<provider>.*`。
-3. 将模型提供商 formatter import 从 `io.agentscope.core.formatter.<provider>.*` 改为 `io.agentscope.extensions.model.<provider>.formatter.*`。
-4. Spring Boot 应用中，改用对应提供商 starter 和 `agentscope.<provider>.*` 配置：
-
-```xml
-<dependency>
-    <groupId>io.agentscope</groupId>
-    <artifactId>agentscope-dashscope-spring-boot-starter</artifactId>
-</dependency>
 ```
 
 ## ModelRegistry 与 ModelCreationContext
@@ -29238,6 +29265,22 @@ AgentScope Java 2.0 版本尽量保持了对 1.x 版本的兼容，确保大部�
 本节汇总 AgentScope Java 与第三方系统、生态服务的集成扩展。每个扩展都是 `agentscope-extensions/` 下的独立 Maven 模块，按需引入即可。
 
 按主题分为以下几组：
+
+## 模型提供商
+
+所有模型提供商已经迁移到独立模型扩展模块中，`agentscope-core` 只保留共享模型契约。完整模型创建方式、Spring Boot 配置、formatter、credential 和高级 registry 行为见 [模型文档](../docs/building-blocks/model.md)。
+
+| 提供商 | Maven artifact | `ModelRegistry` id | 标准环境变量 | 文档 |
+|--------|----------------|--------------------|--------------|------|
+| OpenAI | `agentscope-extensions-model-openai` | `openai:<model>` | `OPENAI_API_KEY` | [OpenAI](model/openai.md) |
+| DashScope | `agentscope-extensions-model-dashscope` | `dashscope:<model>` / `qwen*` | `DASHSCOPE_API_KEY` | [DashScope](model/dashscope.md) |
+| Gemini | `agentscope-extensions-model-gemini` | `gemini:<model>` | `GEMINI_API_KEY` | [Gemini](model/gemini.md) |
+| Anthropic | `agentscope-extensions-model-anthropic` | `anthropic:<model>` | `ANTHROPIC_API_KEY` | [Anthropic](model/anthropic.md) |
+| Ollama | `agentscope-extensions-model-ollama` | `ollama:<model>` | `OLLAMA_BASE_URL`（可选） | [Ollama](model/ollama.md) |
+
+```{note}
+`agentscope-extensions-model-e2e-tests` 是仓库测试模块，不是面向用户的模型集成依赖。
+```
 
 ## 分布式存储（Distributed Store）
 
