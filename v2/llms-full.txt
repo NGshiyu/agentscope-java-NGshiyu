@@ -4113,8 +4113,8 @@ Opt-out switches (rare in production, useful for debugging or self-management):
 | Method | What it disables |
 |--------|------------------|
 | `disableWorkspaceContext()` | system-prompt injection (`AGENTS.md` / `MEMORY.md` / `knowledge/`) |
-| `disableMemoryHooks()` | memory flush + background maintenance |
-| `disableMemoryTools()` | `memory_search` / `memory_get` / `session_search` tools |
+| `disableMemoryHooks()` | memory flush + background maintenance; also drops the "automatically extracted" Persistence line from the system prompt. Combined with `disableMemoryTools()`, also skips `<memory_context>` (`MEMORY.md`) injection |
+| `disableMemoryTools()` | `memory_search` / `memory_get` / `memory_save` / `session_search` tools; also omits Memory Recall and tool-based Persistence guidance from the system prompt |
 | `disableSubagents()` | the entire subagent subsystem |
 | `disableDynamicSkills()` | per-turn skill re-merge; falls back to one-shot merge at build time |
 | `disableToolsConfig()` | reading `tools.json` |
@@ -4131,11 +4131,11 @@ Before every reasoning step, `WorkspaceContextMiddleware` (`io.agentscope.harnes
 | Section | Source | Budgeted |
 |---------|--------|----------|
 | `## Session Context` | Template (today's date, OS, workspace absolute path, temp dir, current `sessionId`) | no |
-| `## Domain Knowledge` / `## Memory Recall` / `## Memory Persistence` guidance | Built-in templates (teach the model how to use memory + navigate knowledge) | no |
+| `## Domain Knowledge` / `## Memory Recall` / `## Memory Persistence` guidance | Built-in templates (teach the model how to use memory + navigate knowledge). Memory sections are omitted / trimmed when `disableMemoryTools()` / `disableMemoryHooks()` are set | no |
 | `## Workspace` section | Template, **branches per filesystem mode** (see below) — tells the model whether it runs locally / sandboxed / on a remote store | no |
 | `## Workspace Files (Injected)` notice | Framework auto-loads the following files from the workspace into a `<loaded_context>` XML block | see below |
 | `<agents_context>` | Full `AGENTS.md` | unlimited |
-| `<memory_context>` | `MEMORY.md`, char-truncated when over the remaining budget with a "use memory_search for older entries" note | `maxContextTokens`, default 8000 |
+| `<memory_context>` | `MEMORY.md`, char-truncated when over the remaining budget with a "use memory_search for older entries" note (plain truncate note when tools are disabled; omitted entirely when both memory tools and hooks are disabled) | `maxContextTokens`, default 8000 |
 | `<domain_knowledge_context>` | Full `knowledge/KNOWLEDGE.md` + listing of every file under `knowledge/` | unlimited (filenames only as the catalog) |
 | `<x_md>` / `<y_md>` | Anything you added with `additionalContextFile("X.md")` | unlimited |
 
@@ -4718,12 +4718,15 @@ If you want to handle memory yourself or wire your own tools:
 ```java
 HarnessAgent.builder()
     ...
-    .disableMemoryHooks()      // disables flush + background maintenance
-    .disableMemoryTools()      // skips memory_search / memory_get / session_search registration
+    .disableMemoryHooks()      // disables flush + background maintenance (+ auto-extract prompt line)
+    .disableMemoryTools()      // skips memory_search / memory_get / memory_save / session_search
+                               // and matching Memory Recall / tool Persistence guidance
     .build();
 ```
 
-`disableMemoryHooks()` is the nuclear option; if you only want to throttle, use `.memory(MemoryConfig.builder().flushTrigger(...).build())` instead.
+Together these also skip `<memory_context>` (`MEMORY.md`) injection while keeping Domain Knowledge / AGENTS / knowledge context.
+
+`disableMemoryHooks()` is the nuclear option for background memory work; if you only want to throttle, use `.memory(MemoryConfig.builder().flushTrigger(...).build())` instead.
 
 ## Related Pages
 
@@ -5886,10 +5889,30 @@ Just set `url` + optional `headers` and the subagent runs through a remote HTTP 
     .description("Remote research subagent")
     .url("http://agent-task-server:8080")
     .headers(Map.of("Authorization", "Bearer xxx"))
+    .remoteStreaming(true)          // default when unset
+    .remoteAskPolicy(RemoteAskPolicy.DENY)  // default
     .build())
 ```
 
 Same sync (`timeout_seconds>0`) / background (`timeout_seconds=0`) semantics apply.
+
+Declaration knobs specific to remote mode:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `remoteStreaming` | `true` (when unset) | When the parent uses `streamEvents()`, forward remote task SSE events into the parent stream with a `source` tag |
+| `remoteAskPolicy` | `DENY` | How to resolve remote tool-confirmation (HITL) requests — see [Remote authorization](#remote-authorization) |
+
+### Remote authorization
+
+Parent DENY permission rules are forwarded in the remote submit `context.deny_rules` (same inheritance as local children; opt out with `inheritParentPermissions(false)`).
+
+When the remote agent pauses for tool confirmation (`awaiting_confirm`):
+
+- **Streaming parent + `remoteAskPolicy=PROPAGATE`**: a `RequireUserConfirmEvent` is forwarded into the parent's `streamEvents()` stream with a non-null `source` tag. Resume the remote task via Agent Protocol [`POST /tasks/{id}/resume`](../../integration/protocol/agent-protocol.md) with `decisions[{toolCallId, approved}]`.
+- **Non-streaming parent (`call`) or `remoteAskPolicy=DENY` (default)**: pending confirmations are auto-denied. The tool result includes a note: `remote tool confirmation(s) were auto-denied`.
+
+While awaiting confirmation, task status stays `RUNNING` (`awaitingConfirm=true`). Barriers such as `wait_async_results` therefore keep waiting until the task is resumed and reaches a terminal status.
 
 ## Background task storage
 
@@ -5998,7 +6021,8 @@ public Flux<ServerSentEvent<String>> chat(@RequestParam String message,
 | `streamEvents()` + synchronous local child (`timeout_seconds > 0`) | ✔ |
 | `call()` mode (non-streaming) | ✗ (child result returns as `tool_result` string) |
 | `timeout_seconds = 0` background task | ✗ (result pushed via reverse notification to parent's next round) |
-| Remote subagent (Agent Protocol) | ✗ |
+| Remote subagent (Agent Protocol) + parent `streamEvents()` + `remoteStreaming=true` (default) | ✔ |
+| Remote subagent + parent `call()` or `remoteStreaming=false` | ✗ |
 
 ### Error handling
 
@@ -6010,6 +6034,7 @@ When a child throws internally, the framework captures it and writes a `TOOL_RES
 - [Workspace](./workspace.md) — `subagents/` and `agents/<id>/tasks/` layout
 - [Plan Mode](./plan-mode.md) — restrictions on subagents during the plan phase
 - [Architecture](./architecture.md) — how parent and child cooperate
+- [Agent Protocol](../../integration/protocol/agent-protocol.md) — remote task endpoints (SSE + HITL resume)
 - [Message & Event](../building-blocks/message-and-event.md) — `AgentEvent` hierarchy (recommended) and the deprecated `Event` / `EventType` / `StreamOptions` types
 - [V1 Migration Guide B.4](../change-log.md) — `stream()` → `streamEvents()` deprecation timeline
 
@@ -7122,7 +7147,7 @@ Python 2.0's `agent.reply_stream()` exposes a single streaming signature (`Async
 - **Types (soft deprecation, no `forRemoval` yet)**
   - `io.agentscope.core.agent.Event`, `EventType`, `EventSource`
   - Still consumed internally by the harness (subagent event forwarding: `SubAgentTool` / `SubagentEventBus` / `DefaultAgentManager` / `AgentSpawnTool`), AGUI, A2A, chat-completions-web, and Kotlin extension modules as the event-bus / adapter input. They will be flipped to `forRemoval = true` only after those modules migrate to `AgentEvent`, so the entire downstream is not warning-flooded in a single release.
-  - **Current gap:** `HarnessAgent.streamEvents(...)` does **not** forward subagent events yet — the `AgentEvent` hierarchy has no equivalent `EventSource` channel. Callers that need the child-agent stream must stay on the deprecated `stream(...)` path until that channel lands.
+  - Subagent events are forwarded on `HarnessAgent.streamEvents(...)` with a non-null `source` path (including remote Agent Protocol children when `remoteStreaming` is enabled).
 
 New code should use:
 
@@ -7181,6 +7206,7 @@ The capabilities below are additive in 2.0 — none of them break 1.x code. The 
 - New `AgentEventConverter` and `AguiEventEnricher` extension points: converters handle semantic mapping, while enrichers handle cross-cutting properties such as `timestamp` / `rawEvent`. The Spring Boot starter automatically collects both bean types.
 - Every `AguiEvent` supports AG-UI base event properties. `BaseEventPropertiesEnricher` is disabled by default; when explicitly enabled, it only fills missing `timestamp` values and does not default `rawEvent`.
 - `AguiAdapterConfig.emitTokenUsage` can emit `CUSTOM token_usage` events with model-call delta and run-level cumulative token usage.
+- **Behavior change:** AgentEvents with `source != null` (subagent events) are emitted as AG-UI `CUSTOM` events (`subagent.lifecycle`, `subagent.text`, `subagent.thinking`, `subagent.tool_call`, `subagent.tool_result`, `subagent.require_confirm`) instead of native `TEXT_MESSAGE_*` / `RUN_*`. Set `emitSubagentEventsAsNative(true)` to restore the legacy native mapping.
 - The Spring Boot starter supports `AguiRuntimeContextResolver`, custom `AguiAgentAdapterFactory`, frontend tool injection / merge mode, and HITL interrupt output.
 
 Detail → [AG-UI](../integration/protocol/agui.md)
@@ -10331,8 +10357,10 @@ AgentScope offers a few protocol adapters to let an Agent talk to the outside wo
 ## Choosing one
 
 - **Stream Agent events to a front-end UI (incl. ThinkingBlock)** → AG-UI
-- **Let other backend systems schedule the Agent over REST** → Agent Protocol
+- **Let other backend systems schedule the Agent over REST / host a remote subagent** → Agent Protocol
 - **Let multiple Agents (yours or third-party) call each other** → A2A
+
+> Layering: AG-UI is user-facing; Agent Protocol is the internal remote-subagent / task HTTP surface; A2A is external interop.
 
 ---
 
@@ -10530,6 +10558,29 @@ The v2 path consumes `AgentEvent`. Built-in converters handle semantic mapping, 
 | Unmapped `AgentEvent`                  | `RAW`, with official `event` and `source` fields |
 
 Normal `RUN_STARTED` and `RUN_FINISHED` events are driven by upstream `AgentStartEvent` and `AgentEndEvent`. If a normal stream completes without an upstream `AgentEndEvent`, the adapter does not synthesize `RUN_FINISHED`. On errors, the adapter emits a `RUN_ERROR` with a `timestamp`, then emits a fallback `RUN_FINISHED`.
+
+## Subagent events
+
+By default (`emitSubagentEventsAsNative=false`), AgentEvents with a non-null `source` (child / remote subagent events) are **not** mapped to native `TEXT_MESSAGE_*` / `RUN_*` / tool-call events. They become AG-UI `CUSTOM` events under the `subagent.*` namespace so they do not pollute the parent run lifecycle or text stream:
+
+| CUSTOM `name` | Typical AgentEvent |
+| --- | --- |
+| `subagent.lifecycle` | `AgentStartEvent` / `AgentEndEvent` |
+| `subagent.text` | `TextBlockDeltaEvent` |
+| `subagent.thinking` | `ThinkingBlockDeltaEvent` |
+| `subagent.tool_call` | `ToolCallStartEvent` / `ToolCallEndEvent` |
+| `subagent.tool_result` | `ToolResultEndEvent` |
+| `subagent.require_confirm` | `RequireUserConfirmEvent` |
+
+Each payload includes at least `source` and `type` (plus type-specific fields such as `delta` or `toolCallId`).
+
+To restore the previous behavior where child events used the same native converters as the parent:
+
+```java
+AguiAdapterConfig config = AguiAdapterConfig.builder()
+    .emitSubagentEventsAsNative(true)
+    .build();
+```
 
 ## AG-UI Base Event Properties
 
@@ -10754,6 +10805,17 @@ Source: https://java.agentscope.io/_sources/v2/en/integration/protocol/agent-pro
 - You want the Agent to be remotely scheduled like a cloud function.
 - An existing team uses an Agent Protocol client and you'd like to plug in directly.
 - You're embedding a Harness Agent in a Spring Boot service and want auto-exposed `/tasks` REST endpoints.
+- You're hosting a [remote subagent](../../docs/harness/subagent.md#remote-subagent) that another Harness parent calls over HTTP.
+
+## Protocol layering
+
+AgentScope uses different protocols for different trust / UX boundaries:
+
+| Layer | Role |
+| --- | --- |
+| **AG-UI** | User-facing chat UI event stream (browser ↔ app) |
+| **Agent Protocol** | Internal remote-subagent / task HTTP API (parent harness ↔ remote agent service) |
+| **A2A** | External agent-to-agent interop (separate extension; not part of this remote-subagent streaming/HITL work) |
 
 ## Add the dependency
 
@@ -10778,7 +10840,7 @@ agentscope:
     enabled: true
 ```
 
-The `/tasks` REST endpoints (per the Agent Protocol spec) are then registered automatically.
+The `/tasks` REST endpoints are then registered automatically.
 
 ## Concurrent execution
 
@@ -10796,13 +10858,108 @@ public HarnessAgent harnessAgent() {
 
 Concurrent requests for the same session are automatically serialized; different sessions run in parallel.
 
+## Endpoints
+
+### Submit a task
+
+`POST /tasks`
+
+```json
+{
+  "task_id": "task_123",
+  "agent_id": "researcher",
+  "input": "Summarize the latest release notes",
+  "context": {
+    "user_id": "u-1",
+    "parent_session_id": "sess-parent",
+    "stream": true,
+    "detail": "full",
+    "deny_rules": [
+      {
+        "tool_name": "bash",
+        "behavior": "DENY",
+        "source": "parent"
+      }
+    ]
+  }
+}
+```
+
+Optional `context` fields:
+
+| Field | Notes |
+| --- | --- |
+| `user_id` | Forwarded into the remote agent's `RuntimeContext` |
+| `parent_session_id` | Parent session identity (for tracing / correlation) |
+| `stream` | Whether the caller intends to consume SSE events |
+| `detail` | `status` (default) or `full` — `full` includes text/thinking deltas on the event stream |
+| `deny_rules` | Parent DENY permission rules to enforce on the remote side |
+
+Response on success: `{ "task_id", "status": "pending" }`.
+
+### Poll / wait / cancel
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/tasks/{taskId}` | Snapshot (`status`, result, errors, pending confirms) |
+| `GET` | `/tasks/{taskId}/wait?timeout_seconds=7200` | Block until terminal (or `awaiting_confirm`) |
+| `POST` | `/tasks/{taskId}/cancel` | Request cancellation |
+
+While the remote agent waits for tool confirmation, the snapshot reports `status: awaiting_confirm` but the stored `TaskStatus` remains `RUNNING` so parent barriers keep waiting.
+
+### Stream events (SSE)
+
+`GET /tasks/{taskId}/events`
+
+Server-Sent Events of agent progress. Requires `agentscope.agent-protocol.streaming-enabled=true` (default).
+
+Reconnect / resume:
+
+- Query param `from_seq` — start after this sequence number
+- Header `Last-Event-ID` — used when `from_seq` is omitted (same meaning)
+
+Each SSE message uses the event seq as `id`, the remote event type as `event`, and a JSON body as `data`.
+
+### Resume after HITL
+
+`POST /tasks/{taskId}/resume`
+
+```json
+{
+  "decisions": [
+    { "toolCallId": "call-1", "approved": true },
+    { "toolCallId": "call-2", "approved": false }
+  ]
+}
+```
+
+`tool_call_id` is also accepted as an alias for `toolCallId`. Requires `agentscope.agent-protocol.hitl-enabled=true` (default). On success returns `{ "task_id", "status": "running" }`.
+
+How remote HITL interacts with a calling parent harness is documented under [Remote authorization](../../docs/harness/subagent.md#remote-authorization).
+
 ## Configuration
 
 | Property | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `agentscope.agent-protocol.enabled` | boolean | `false` | Whether to register the `/tasks` REST endpoints |
+| `agentscope.agent-protocol.streaming-enabled` | boolean | `true` | Expose SSE `GET /tasks/{id}/events` |
+| `agentscope.agent-protocol.hitl-enabled` | boolean | `true` | Pause tasks for tool confirmation and accept `/resume` |
+| `agentscope.agent-protocol.sse-replay-buffer-size` | int | `256` | Per-task replay buffer for late SSE subscribers |
+| `agentscope.agent-protocol.sse-timeout-ms` | long | `10800000` | Max SSE subscription duration (ms) |
 
-> When disabled (the default) the dependency stays inert — no REST endpoints are exposed, safe to ship.
+Example:
+
+```yaml
+agentscope:
+  agent-protocol:
+    enabled: true
+    streaming-enabled: true
+    hitl-enabled: true
+    sse-replay-buffer-size: 256
+    sse-timeout-ms: 10800000
+```
+
+> When `enabled` is `false` (the default) the dependency stays inert — no REST endpoints are exposed, safe to ship.
 
 ## Workspace integration
 
