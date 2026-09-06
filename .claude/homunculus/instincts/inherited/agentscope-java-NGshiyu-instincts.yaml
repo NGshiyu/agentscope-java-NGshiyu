@@ -1,0 +1,319 @@
+# Instincts generated from https://github.com/NGshiyu/agentscope-java-NGshiyu
+# Generated: 2026-05-09T06:35:51.865Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: agentscope-java-NGshiyu-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java NGshiyu Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat
+
+## Evidence
+
+- 1 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat: enhance filesystem support with bind mount entries and update package structure (#1361)
+
+---
+id: agentscope-java-NGshiyu-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java NGshiyu Commit Length
+
+## Action
+
+Write moderate-length commit messages (~93 characters)
+
+## Evidence
+
+- Average commit message length: 93 chars
+- Based on 1 commits
+
+---
+id: agentscope-java-NGshiyu-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java NGshiyu Naming Files
+
+## Action
+
+Use PascalCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: PascalCase
+
+---
+id: agentscope-java-NGshiyu-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java NGshiyu Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: agentscope-java-NGshiyu-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java NGshiyu Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: agentscope-java-NGshiyu-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java NGshiyu Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: agentscope-java-ngshiyu-instinct-class-naming
+trigger: "When creating a new Java class file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Class Naming
+
+## Action
+
+Name the file and class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.files: PascalCase
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: agentscope-java-ngshiyu-instinct-function-naming
+trigger: "When defining a new function or method"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Function Naming
+
+## Action
+
+Use camelCase for the function name
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: agentscope-java-ngshiyu-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for the constant name
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: agentscope-java-ngshiyu-instinct-import-style
+trigger: "When importing modules or classes"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: agentscope-java-ngshiyu-instinct-export-style
+trigger: "When exporting modules or classes"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: agentscope-java-ngshiyu-instinct-commit-format
+trigger: "When writing a git commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Commit Format
+
+## Action
+
+Start the commit message with a 'feat:' prefix, followed by a concise description
+
+## Evidence
+
+- Pattern in commits.prefixes: feat
+- Example commit: 'feat: enhance filesystem support with bind mount entries and update package structure (#1361)'
+
+---
+id: agentscope-java-ngshiyu-instinct-commit-length
+trigger: "When composing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Commit Length
+
+## Action
+
+Write commit messages around 90-100 characters in length
+
+## Evidence
+
+- Pattern in commits.averageLength: 93
+
+---
+id: agentscope-java-ngshiyu-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Test Location
+
+## Action
+
+Place test files in mixed locations (not strictly separated from source files)
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation: mixed
+
+---
+id: agentscope-java-ngshiyu-instinct-test-type
+trigger: "When writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Test Type
+
+## Action
+
+Write unit tests
+
+## Evidence
+
+- Pattern in testing.testTypes: unit
+
+---
+id: agentscope-java-ngshiyu-instinct-test-pattern
+trigger: "When naming test files"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: NGshiyu/agentscope-java-NGshiyu
+---
+
+# Agentscope Java Ngshiyu Instinct Test Pattern
+
+## Action
+
+Use the '*.test.ts' file pattern
+
+## Evidence
+
+- Pattern in testing.filePattern: *.test.ts
+
